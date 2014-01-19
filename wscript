@@ -9,7 +9,6 @@ def configure(cnf):
     cnf.load('compiler_c')
     cnf.check_cfg(package='fuse', args='--cflags --libs', uselib_store='FUSE')
     cnf.define('FUSE_USE_VERSION', 26)
-    # cnf.check(header_name='fuse.h', uselib_store='FUSE')
 
 
 def build(bld):
