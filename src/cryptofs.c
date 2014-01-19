@@ -5,6 +5,7 @@
 #include <pwd.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 
 #include "lib/tweetnacl.h"
 #include <fuse.h>
@@ -26,6 +27,7 @@ static int crypto_mknod(const char * buf, mode_t mode, dev_t dev){
 
 static int crypto_open(const char *path, struct fuse_file_info *inf){
   char *cpath = malloc(strnlen(path, PATH_MAX));
+  if(cpath == NULL) return -ENOMEM;
   _crypto_path(cpath, path);
   uint64_t fh = open(cpath, inf->flags);
   free(cpath);
@@ -58,9 +60,16 @@ int main(int argc, char *argv[]) {
     printf("not enough arguments, usage: cryptofs <encdir> <mount>");
     return 1;
   }
+  struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
+  for(int i = 0; i < argc; i++) {
+    if (i == 1)
+      crypto_dir = argv[i];
+    else
+      fuse_opt_add_arg(&args, argv[i]);
+  }
   crypto_dir = argv[1];
   char *pw;
   pw = getpass("enter password: ");
   crypto_hash(key, (unsigned char *) pw, strnlen(pw, _PASSWORD_LEN));
-  return fuse_main(argc, argv, &crypto_ops, NULL);
+  return fuse_main(args.argc, args.argv, &crypto_ops, NULL);
 }
