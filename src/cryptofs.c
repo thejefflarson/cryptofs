@@ -2,6 +2,7 @@
 #include <fuse.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <stdio.h>
 
 static crypto_dir[PATH_MAX];
 
@@ -22,5 +23,8 @@ static struct fuse_operations = {
 };
 
 int main(int argc, char *argv[]) {
-
+  if(argc != 3) {
+    printf(stderr, "not enough arguments, usage: cryptofs <encdir> <mount>");
+    exit();
+  }
 }
