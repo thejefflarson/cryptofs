@@ -7,7 +7,9 @@ def options(opt):
 
 def configure(cnf):
     cnf.load('compiler_c')
-    cnf.check(features='c', lib='fuse')
+    cnf.check_cfg(package='fuse', args='--cflags --libs', uselib_store='FUSE')
+    cnf.define('FUSE_USE_VERSION', 26)
+    # cnf.check(header_name='fuse.h', uselib_store='FUSE')
 
 
 def build(bld):
@@ -20,6 +22,7 @@ def build(bld):
         features='c',
         source=bld.path.ant_glob(['src/*.c']),
         includes='.',
-        target='cryptofs fuse',
-        use='tweetnacl'
+        target='cryptofs',
+        use='tweetnacl',
+        uselib='FUSE'
     )
