@@ -2,12 +2,12 @@
 
 
 def options(opt):
-    configure(opt)
+    opt.load('compiler_c')
 
 
 def configure(cnf):
-    cnf.load('compiler_c compiler_cxx')
-    cnf.load('ragel', tooldir='./tools/')
+    cnf.load('compiler_c')
+    cnf.check(features='c', lib='fuse')
 
 
 def build(bld):
@@ -17,9 +17,9 @@ def build(bld):
         target='tweetnacl'
     )
     bld.program(
-        features='c ragel',
-        source=bld.path.ant_glob(['src/*.rl', 'src/*.cc']),
+        features='c',
+        source=bld.path.ant_glob(['src/*.c']),
         includes='.',
-        target='cryptofs',
+        target='cryptofs fuse',
         use='tweetnacl'
     )
