@@ -12,6 +12,9 @@
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
 
+void _crypto_path(char *crypto_path, char *cpath){
+
+}
 
 static int crypto_getattr(){
   return 0;
@@ -21,7 +24,16 @@ static int crypto_mknod(const char * buf, mode_t mode, dev_t dev){
   return 0;
 }
 
-static int crypto_open(){
+static int crypto_open(const char *path, struct fuse_file_info *inf){
+  char *cpath = malloc(strnlen(path, PATH_MAX));
+  _crypto_path(cpath, path);
+  uint64_t fh = open(cpath, inf->flags);
+  free(cpath);
+
+  if(fh == -1)
+    return -errno;
+
+  inf->fh = fh;
   return 0;
 }
 
