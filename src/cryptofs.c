@@ -148,7 +148,6 @@ static struct fuse_operations crypto_ops = {
 };
 
 int main(int argc, char *argv[]) {
-  umask(0);
   if(argc < 3) {
     printf("%i not enough arguments, usage: cryptofs <encdir> <mount>\n", argc);
     return 1;
@@ -160,9 +159,10 @@ int main(int argc, char *argv[]) {
     else
       fuse_opt_add_arg(&args, argv[i]);
   }
-  puts(crypto_dir);
-  char *pw;
-  pw = getpass("enter password: ");
+  char *pw = getpass("enter password: ");
   crypto_hash(key, (unsigned char *) pw, strnlen(pw, _PASSWORD_LEN));
-  return fuse_main(args.argc, args.argv, &crypto_ops, NULL);
+  int ret = fuse_main(args.argc, args.argv, &crypto_ops, NULL);
+  fuse_opt_free_args(&args);
+  free(crypto_dir);
+  return ret;
 }
