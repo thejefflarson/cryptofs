@@ -96,7 +96,8 @@ static int crypto_open(const char *path, struct fuse_file_info *inf){
   return 0;
 }
 
-static int crypto_create(const char *path, mode_t mode, struct fuse_file_info *inf){
+static int crypto_create(const char *path, mode_t mode,
+                         struct fuse_file_info *inf){
   WITH_CRYPTO_PATH(int fh = open(cpath, inf->flags, mode))
 
   if(fh == -1)
@@ -135,6 +136,8 @@ static int crypto_read(const char *path, char *buf, size_t size,
   return red;
 }
 
+// We encrypt like GDBE each sector has a crypto_secretbox_NONCEBYTES-long
+// nonce prepended to each sector.
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   (void) path;
@@ -152,7 +155,8 @@ static int crypto_truncate(const char *path, off_t off){
   CHECK_ERR
 }
 
-static int crypto_ftruncate(const char *path, off_t off, struct fuse_file_info *inf){
+static int crypto_ftruncate(const char *path, off_t off,
+                            struct fuse_file_info *inf){
   (void) path;
 
   int err = ftruncate(inf->fh, off);
