@@ -15,22 +15,27 @@ static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
 static size_t block_size = 1024;
 
+#define WITH_CRYPTO_PATH(line) \
+  char *cpath = _crypto_path(path); \
+  if(cpath == NULL) return -ENOMEM; \
+  line; \
+  free(cpath);
+
+#define CHECK_ERR \
+  if(err == -1) \
+    return -errno; \
+  return 0;
+
 char * _crypto_path(const char *path){
   char *ret;
-  asprintf(&ret, "%s%s", crypto_dir, path);
+  asprintf(&ret, path[0] == '/' ? "%s%s" : "%s/%s", crypto_dir, path);
   return ret;
 }
 
 static int crypto_getattr(const char *path, struct stat *st){
-  char *cpath = _crypto_path(path);
-  if(cpath == NULL) return -ENOMEM;
-  int res = lstat(cpath, st);
-  free(cpath);
+  WITH_CRYPTO_PATH(int err = lstat(cpath, st))
 
-  if(res == -1)
-    return -errno;
-
-  return 0;
+  CHECK_ERR
 }
 
 static int crypto_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
@@ -65,32 +70,23 @@ static int crypto_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int crypto_mknod(const char *path, mode_t mode, dev_t dev){
   char *cpath = _crypto_path(path);
-
   if(cpath == NULL) return -ENOMEM;
 
-  int res;
+  int err;
 
   if(S_ISFIFO(mode)) {
-    res = mkfifo(cpath, mode);
+    err = mkfifo(cpath, mode);
   } else {
-    puts(cpath);
-    res = mknod(cpath, mode, dev);
+    err = mknod(cpath, mode, dev);
   }
 
   free(cpath);
-  printf("%i", res);
-  if(res == -1)
-    return -errno;
 
-  return 0;
+  CHECK_ERR
 }
 
 static int crypto_open(const char *path, struct fuse_file_info *inf){
-  char *cpath = _crypto_path(path);
-  if(cpath == NULL) return -ENOMEM;
-
-  int fh = open(cpath, inf->flags);
-  free(cpath);
+  WITH_CRYPTO_PATH(int fh = open(cpath, inf->flags))
 
   if(fh == -1)
     return -errno;
@@ -101,11 +97,7 @@ static int crypto_open(const char *path, struct fuse_file_info *inf){
 }
 
 static int crypto_create(const char *path, mode_t mode, struct fuse_file_info *inf){
-  char *cpath = _crypto_path(path);
-  if(cpath == NULL) return -ENOMEM;
-
-  int fh = open(cpath, inf->flags, mode);
-  free(cpath);
+  WITH_CRYPTO_PATH(int fh = open(cpath, inf->flags, mode))
 
   if(fh == -1)
     return -errno;
@@ -115,14 +107,20 @@ static int crypto_create(const char *path, mode_t mode, struct fuse_file_info *i
   return 0;
 }
 
+static int crypto_unlink(const char *path) {
+  WITH_CRYPTO_PATH(int err = unlink(cpath))
+
+  CHECK_ERR
+}
+
 static int crypto_read(const char *path, char *buf, size_t size,
                        off_t off, struct fuse_file_info *inf){
   (void) path;
 
   int res = pread(inf->fh, buf, size, off);
+
   if(res == -1)
     return -errno;
-
   return res;
 }
 
@@ -131,20 +129,114 @@ static int crypto_write(const char *path, const char *buf, size_t size,
   (void) path;
 
   int res = pwrite(inf->fh, buf, size, off);
+
   if(res == -1)
     return -errno;
-
   return res;
 }
 
+static int crypto_truncate(const char *path, off_t off){
+  WITH_CRYPTO_PATH(int err = truncate(cpath, off))
+
+  CHECK_ERR
+}
+
+static int crypto_ftruncate(const char *path, off_t off, struct fuse_file_info *inf){
+  (void) path;
+
+  int err = ftruncate(inf->fh, off);
+
+  CHECK_ERR
+}
+
+static int crypto_statfs(const char *path, struct statvfs *stat){
+  WITH_CRYPTO_PATH(int err = statvfs(cpath, stat))
+
+  CHECK_ERR
+}
+
+static int crypto_mkdir(const char *path, mode_t mode){
+  WITH_CRYPTO_PATH(int err = mkdir(cpath, mode))
+
+  CHECK_ERR
+}
+
+static int crypto_rmdir(const char *path){
+  WITH_CRYPTO_PATH(int err = rmdir(cpath))
+
+  CHECK_ERR
+}
+
+static int crypto_rename(const char *from, const char *to){
+  char *cfrom = _crypto_path(from);
+  char *cto   = _crypto_path(to);
+  int err     = rename(cfrom, cto);
+  free(cfrom);
+  free(cto);
+  CHECK_ERR
+}
+
+static int crypto_symlink(const char *from, const char *to){
+  char *cfrom = _crypto_path(from);
+  char *cto   = _crypto_path(to);
+  int err     = symlink(cfrom, cto);
+  free(cfrom);
+  free(cto);
+  CHECK_ERR
+}
+
+static int crypto_link(const char *from, const char *to){
+  char *cfrom = _crypto_path(from);
+  char *cto   = _crypto_path(to);
+  int err     = link(cfrom, cto);
+  free(cfrom);
+  free(cto);
+  CHECK_ERR
+}
+
+// todo decrypt buf here
+static int crypto_readlink(const char *path, char *buf, size_t size){
+  WITH_CRYPTO_PATH(int err = readlink(cpath, buf, size - 1))
+
+  if(err == -1)
+    return -errno;
+
+  buf[size] = '\0';
+  return 0;
+}
+
+static int crypto_chmod(const char *path, mode_t mode){
+  WITH_CRYPTO_PATH(int err = chmod(cpath, mode))
+
+  CHECK_ERR
+}
+
+static int crypto_chown(const char *path, uid_t uid, gid_t gid){
+  WITH_CRYPTO_PATH(int err = chown(cpath, uid, gid))
+
+  CHECK_ERR
+}
+
 static struct fuse_operations crypto_ops = {
-  .getattr  = crypto_getattr,
-  .readdir  = crypto_readdir,
-  .mknod    = crypto_mknod,
-  .open     = crypto_open,
-  .create   = crypto_create,
-  .read     = crypto_read,
-  .write    = crypto_write
+  .getattr   = crypto_getattr,
+  .readdir   = crypto_readdir,
+  .mknod     = crypto_mknod,
+  .open      = crypto_open,
+  .unlink    = crypto_unlink,
+  .create    = crypto_create,
+  .read      = crypto_read,
+  .write     = crypto_write,
+  .truncate  = crypto_truncate,
+  .ftruncate = crypto_ftruncate,
+  .statfs    = crypto_statfs,
+  .mkdir     = crypto_mkdir,
+  .rmdir     = crypto_rmdir,
+  .rename    = crypto_rename,
+  .symlink   = crypto_symlink,
+  .link      = crypto_link,
+  .readlink  = crypto_readlink,
+  .chmod     = crypto_chmod,
+  .chown     = crypto_chown
 };
 
 int main(int argc, char *argv[]) {
