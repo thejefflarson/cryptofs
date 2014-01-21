@@ -28,7 +28,7 @@ static size_t block_size = 1024;
 
 char * _crypto_path(const char *path){
   char *ret;
-  asprintf(&ret, path[0] == '/' ? "%s%s" : "%s/%s", crypto_dir, path);
+  asprintf(&ret, path[0] == '/' ? "%s%s" : "%s/%s" , crypto_dir, path);
   return ret;
 }
 
@@ -117,11 +117,22 @@ static int crypto_read(const char *path, char *buf, size_t size,
                        off_t off, struct fuse_file_info *inf){
   (void) path;
 
-  int res = pread(inf->fh, buf, size, off);
+  int red = 0;
+  off_t boff = off / block_size * block_size;
 
-  if(res == -1)
-    return -errno;
-  return res;
+  while(size > 0) {
+    char b[block_size];
+    size_t res = pread(inf->fh, b, block_size, boff);
+    if(res == -1)
+      return -errno;
+    memcpy(buf + red, b + off, block_size - off);
+    size -= res;
+    red  += res;
+    boff += res;
+    off   = 0;
+  }
+
+  return red;
 }
 
 static int crypto_write(const char *path, const char *buf, size_t size,
@@ -241,7 +252,7 @@ static struct fuse_operations crypto_ops = {
 
 int main(int argc, char *argv[]) {
   if(argc < 3) {
-    printf("%i not enough arguments, usage: cryptofs <encdir> <mount>\n", argc);
+    printf("not enough arguments, usage: cryptofs <encdir> <mount>\n");
     return 1;
   }
   struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
