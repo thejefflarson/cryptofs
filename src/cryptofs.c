@@ -13,7 +13,7 @@
 
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
-static size_t block_size = 1024;
+static size_t block_size = 4096; // OSX Page Size
 
 #define WITH_CRYPTO_PATH(line) \
   char *cpath = _crypto_path(path); \
@@ -124,6 +124,8 @@ static int crypto_read(const char *path, char *buf, size_t size,
   while(size > 0) {
     char b[block_size];
     size_t res = pread(inf->fh, b, block_size, boff);
+    printf("boff: %lli\n",  boff);
+
     if(res == -1)
       return -errno;
     memcpy(buf + red, b + delta, block_size - delta);
@@ -142,13 +144,18 @@ static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   (void) path;
   int written = 0;
+  off_t boff  = off / block_size * block_size;
+  off_t delta = boff - off;
 
   while(size > 0) {
-    int res = pwrite(inf->fh, buf, size, off);
+    size_t to_write = size < (block_size - delta) ? size : (block_size - delta);
+    int res = pwrite(inf->fh, buf + written, to_write, boff - delta);
     if(res == -1)
       return -errno;
     written += res;
+    boff    += res;
     size    -= res;
+    delta    = 0;
   }
 
   return written;
