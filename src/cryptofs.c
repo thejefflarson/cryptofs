@@ -127,7 +127,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     if(res == -1)
       return -errno;
     memcpy(buf + red, b + delta, block_size - delta);
-    size  -= res;
+    size  -= res - delta;
     red   += res - delta;
     boff  += res;
     delta  = 0;
