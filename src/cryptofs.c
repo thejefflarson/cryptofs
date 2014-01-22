@@ -124,8 +124,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
   while(size > 0) {
     char b[block_size];
     size_t res = pread(inf->fh, b, block_size, boff);
-    printf("boff: %lli\n",  boff);
-
     if(res == -1)
       return -errno;
     memcpy(buf + red, b + delta, block_size - delta);
