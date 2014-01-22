@@ -141,12 +141,17 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   (void) path;
+  int written = 0;
 
-  int res = pwrite(inf->fh, buf, size, off);
+  while(size > 0) {
+    int res = pwrite(inf->fh, buf, size, off);
+    if(res == -1)
+      return -errno;
+    written += res;
+    size    -= res;
+  }
 
-  if(res == -1)
-    return -errno;
-  return res;
+  return written;
 }
 
 static int crypto_truncate(const char *path, off_t off){
