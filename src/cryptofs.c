@@ -119,18 +119,18 @@ static int crypto_read(const char *path, char *buf, size_t size,
   (void) path;
 
   int red = 0;
-  off_t boff = off / block_size * block_size;
-
+  off_t boff  = off / block_size * block_size;
+  off_t delta = off - boff;
   while(size > 0) {
     char b[block_size];
     size_t res = pread(inf->fh, b, block_size, boff);
     if(res == -1)
       return -errno;
-    memcpy(buf + red, b + off, block_size - off);
-    size -= res;
-    red  += res;
-    boff += res;
-    off   = 0;
+    memcpy(buf + red, b + delta, block_size - delta);
+    size  -= res;
+    red   += res - delta;
+    boff  += res;
+    delta  = 0;
   }
 
   return red;
