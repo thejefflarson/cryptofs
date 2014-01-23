@@ -152,13 +152,22 @@ static int crypto_write(const char *path, const char *buf, size_t size,
   memset(cipher_text, 0, csize);
   while(size > 0) {
     // todo: ENCRYPT!
+    if(size < block_size - delta) { // we are at the last block
+
+    } else { // we are writing a whole block or the first partial block
+      if(block_size - delta < block_size) { // we are at a first partial block
+        // TODO
+      } else {
+
+      }
+    }
     size_t to_write = size < (block_size - delta) ? size : (block_size - delta);
     int res = pwrite(inf->fh, buf + written, to_write, boff - delta);
     if(res == -1)
       return -errno;
-    written += res;
+    written += res - crypto_secretbox_NONCEBYTES;
     boff    += res;
-    size    -= res;
+    size    -= res - crypto_secretbox_NONCEBYTES;
     delta    = 0;
   }
 
