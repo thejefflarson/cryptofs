@@ -121,6 +121,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
   int red = 0;
   off_t boff  = off / block_size * block_size;
   off_t delta = off - boff;
+
   while(size > 0) {
     char b[block_size];
     size_t res = pread(inf->fh, b, block_size, boff);
@@ -141,11 +142,16 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   (void) path;
+
   int written = 0;
   off_t boff  = off / block_size * block_size;
-  off_t delta = boff - off;
-
+  off_t delta = boff + block_size - (block_size - off);
+  size_t csize = crypto_secretbox_ZEROBYTES + (block_size -
+                  crypto_secretbox_NONCEBYTES);
+  unsigned char cipher_text[csize];
+  memset(cipher_text, 0, csize);
   while(size > 0) {
+    // todo: ENCRYPT!
     size_t to_write = size < (block_size - delta) ? size : (block_size - delta);
     int res = pwrite(inf->fh, buf + written, to_write, boff - delta);
     if(res == -1)
