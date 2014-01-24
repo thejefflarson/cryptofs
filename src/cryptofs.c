@@ -35,7 +35,7 @@ char * _crypto_path(const char *path){
 static int crypto_getattr(const char *path, struct stat *st){
   WITH_CRYPTO_PATH(int err = lstat(cpath, st))
 
-  int num_blocks = st->st_size / block_size;
+  size_t num_blocks = st->st_size / block_size;
   size_t total_overhead = num_blocks * (crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES);
   if(st->st_size % block_size != 0) total_overhead += (crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES);
   st->st_size -= total_overhead;
@@ -123,12 +123,12 @@ static int crypto_read(const char *path, char *buf, size_t size,
                        off_t off, struct fuse_file_info *inf){
   (void) path;
 
-  int red = 0;
+  size_t red = 0;
   off_t boff  = off / block_size * block_size;
   off_t delta = off - boff;
 
   while(size > 0) {
-    int bsize = (size < block_size ? size : block_size);
+    size_t bsize = (size < block_size ? size : block_size);
     char block[size];
     size_t res = pread(inf->fh, block, bsize, boff);
     if(res == -1)
@@ -137,7 +137,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    int csize = bsize - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
+    size_t csize = bsize - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
     unsigned char cpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
@@ -166,16 +166,16 @@ static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   (void) path;
 
-  int written = 0;
+  size_t written = 0;
   off_t boff  = off / block_size * block_size;
   off_t delta = boff + block_size - (block_size - off);
   unsigned char block[block_size];
   while(size > 0) {
     memset(block, 0, block_size);
-    int to_write = size < block_size - crypto_secretbox_NONCEBYTES ? size + crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES : block_size;
+    size_t to_write = size < block_size - crypto_secretbox_NONCEBYTES ? size + crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES : block_size;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
-    int msize = to_write - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
+    size_t msize = to_write - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
     unsigned char mpad[msize + crypto_secretbox_ZEROBYTES];
     unsigned char cpad[msize + crypto_secretbox_ZEROBYTES];
     memset(mpad, 0, msize + crypto_secretbox_ZEROBYTES);
@@ -184,17 +184,19 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     if(block_size - delta < block_size) {
       // we are at a first partial block, we have to read the rest of the data
       // and append the new stuff to our buffer.
-      // TODO
+      char part[delta];
+      crypto_read(path, part, delta, boff, inf);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES, part, delta);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES + delta, buf, block_size - delta);
     } else {
-      // we are writing a full block, or the last partial block, fix this to
-      // remove cast
+      // we are writing a full block, or the last partial block
       memcpy(mpad + crypto_secretbox_ZEROBYTES, buf + written, msize);
     }
 
     crypto_secretbox(cpad, mpad, msize, nonce, key);
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
-    int res = pwrite(inf->fh, block, to_write, boff);
+    size_t res = pwrite(inf->fh, block, to_write, boff);
     if(res == -1)
       return -errno;
     written += msize;
