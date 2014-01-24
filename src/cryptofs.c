@@ -127,10 +127,24 @@ static int crypto_read(const char *path, char *buf, size_t size,
     size_t res = pread(inf->fh, b, block_size, boff);
     if(res == -1)
       return -errno;
-    memcpy(buf + red, b + delta, block_size - delta);
-    size  -= res - delta;
-    red   += res - delta;
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+    memcpy(nonce, b, crypto_secretbox_NONCEBYTES);
+    int csize = block_size - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
+    unsigned char cpad[csize];
+    memset(cpad, 0, csize);
+    memcpy(cpad + crypto_secretbox_BOXZEROBYTES, b, block_size - crypto_secretbox_NONCEBYTES);
+    unsigned char mpad[csize];
+    memset(mpad, 0, csize);
+    printf("csize: %i\n", csize);
+    int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
+    printf("message: %s\n", mpad);
+    if(ruroh == -1)
+      return -ENXIO;
+    // memcpy(buf + red, mpad + delta + , block_size - delta);
+    size  -= res - delta - crypto_secretbox_NONCEBYTES;
+    red   += res - delta - crypto_secretbox_NONCEBYTES;
     boff  += res;
+
     delta  = 0;
   }
 
@@ -153,7 +167,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     int to_write = size < block_size - crypto_secretbox_NONCEBYTES ? size + crypto_secretbox_NONCEBYTES : block_size;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
-    int csize = to_write - crypto_secretbox_NONCEBYTES;
+    int csize = to_write - crypto_secretbox_NONCEBYTES - (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
     unsigned char mpad[csize + crypto_secretbox_ZEROBYTES];
     unsigned char cpad[csize + crypto_secretbox_ZEROBYTES];
     memset(mpad, 0, csize + crypto_secretbox_ZEROBYTES);
@@ -166,24 +180,26 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     } else {
       // we are writing a full block, or the last partial block, fix this to
       // remove cast
-      strncpy((char *)mpad + crypto_secretbox_ZEROBYTES, buf + written, csize);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES, buf + written, csize);
     }
 
     crypto_secretbox(cpad, mpad, csize, nonce, key);
-    for(int i = 0; i < crypto_secretbox_NONCEBYTES; i++)
-      block[i] = nonce[i];
-    for(int i = 0; i < csize; i++)
-      block[i + crypto_secretbox_NONCEBYTES] = cpad[i + crypto_secretbox_ZEROBYTES];
+    memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
+    memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, csize - crypto_secretbox_BOXZEROBYTES);
+    memset(cpad, 0, crypto_secretbox_BOXZEROBYTES);
 
+    int ruroh = crypto_secretbox(mpad, cpad, csize, nonce, key);
+    printf("%i\n", ruroh);
+    printf("%s\n", mpad + crypto_secretbox_ZEROBYTES);
     int res = pwrite(inf->fh, block, to_write, boff);
     if(res == -1)
       return -errno;
-    printf("res: %i, to_write: %i\n", res, to_write);
-    written += res - crypto_secretbox_NONCEBYTES;
+    // printf("res: %i, to_write: %i\n", res, to_write);
+    written += res - crypto_secretbox_NONCEBYTES - (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
     boff    += res;
-    size    -= res - crypto_secretbox_NONCEBYTES;
+    size    -= res - crypto_secretbox_NONCEBYTES - (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
     delta    = 0;
-    printf("current block: %llu written: %i size: %zu\n", boff, written, size);
+    // printf("current block: %llu written: %i size: %zu\n", boff, written, size);
   }
 
   return written;
