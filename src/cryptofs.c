@@ -138,7 +138,8 @@ static int crypto_read(const char *path, char *buf, size_t size,
 }
 
 // We encrypt like GDBE each sector has a crypto_secretbox_NONCEBYTES-long
-// nonce prepended to each sector.
+// nonce prepended to each sector. This is so confusing, and needs to be
+// cleaned up.
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   (void) path;
@@ -146,29 +147,42 @@ static int crypto_write(const char *path, const char *buf, size_t size,
   int written = 0;
   off_t boff  = off / block_size * block_size;
   off_t delta = boff + block_size - (block_size - off);
-  size_t csize = crypto_secretbox_ZEROBYTES + (block_size -
-                  crypto_secretbox_NONCEBYTES);
-  unsigned char cipher_text[csize];
-  memset(cipher_text, 0, csize);
+  unsigned char block[block_size];
   while(size > 0) {
-    // todo: ENCRYPT!
-    if(size < block_size - delta) { // we are at the last block
+    memset(block, 0, block_size);
+    int to_write = size < block_size - crypto_secretbox_NONCEBYTES ? size + crypto_secretbox_NONCEBYTES : block_size;
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+    randombytes(nonce, crypto_secretbox_NONCEBYTES);
+    int csize = to_write - crypto_secretbox_NONCEBYTES;
+    unsigned char mpad[csize + crypto_secretbox_ZEROBYTES];
+    unsigned char cpad[csize + crypto_secretbox_ZEROBYTES];
+    memset(mpad, 0, csize + crypto_secretbox_ZEROBYTES);
 
-    } else { // we are writing a whole block or the first partial block
-      if(block_size - delta < block_size) { // we are at a first partial block
-        // TODO
-      } else {
-
-      }
+    if(block_size - delta < block_size) {
+      // we are at a first partial block, we have to read the rest of the data
+      // and append the new stuff to our buffer.
+      // TODO
+    } else {
+      // we are writing a full block, or the last partial block, fix this to
+      // remove cast
+      strncpy((char *)mpad + crypto_secretbox_ZEROBYTES, buf + written, csize);
     }
-    size_t to_write = size < (block_size - delta) ? size : (block_size - delta);
-    int res = pwrite(inf->fh, buf + written, to_write, boff - delta);
+
+    crypto_secretbox(cpad, mpad, csize, nonce, key);
+    for(int i = 0; i < crypto_secretbox_NONCEBYTES; i++)
+      block[i] = nonce[i];
+    for(int i = 0; i < csize; i++)
+      block[i + crypto_secretbox_NONCEBYTES] = cpad[i + crypto_secretbox_ZEROBYTES];
+
+    int res = pwrite(inf->fh, block, to_write, boff);
     if(res == -1)
       return -errno;
+    printf("res: %i, to_write: %i\n", res, to_write);
     written += res - crypto_secretbox_NONCEBYTES;
     boff    += res;
     size    -= res - crypto_secretbox_NONCEBYTES;
     delta    = 0;
+    printf("current block: %llu written: %i size: %zu\n", boff, written, size);
   }
 
   return written;

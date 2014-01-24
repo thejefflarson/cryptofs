@@ -807,26 +807,39 @@ int crypto_sign_open(u8 *m,u64 *mlen,const u8 *sm,u64 n,const u8 *pk)
   return 0;
 }
 
-// Random bytes implementation
-#include <stdio.h>
-#include <stdlib.h>
+// Random bytes implementation from nacl
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
-static FILE* in;
-void randombytes(u8 * buf, u64 num){
-  if(in == NULL) {
-    while(1) {
-      in = fopen("/dev/urandom", "r");
-      if(in == NULL) break;
+
+/* it's really stupid that there isn't a syscall for this */
+
+static int fd = -1;
+
+void randombytes(unsigned char *x,unsigned long long xlen)
+{
+  int i;
+
+  if (fd == -1) {
+    for (;;) {
+      fd = open("/dev/urandom",O_RDONLY);
+      if (fd != -1) break;
       sleep(1);
     }
   }
-  while(num > 0) {
-    u64 out = fread(buf, sizeof(u8), num, in);
-    if(out < 1) {
+
+  while (xlen > 0) {
+    if (xlen < 1048576) i = xlen; else i = 1048576;
+
+    i = read(fd,x,i);
+    if (i < 1) {
       sleep(1);
       continue;
     }
-    buf += out;
-    num -= out;
+
+    x += i;
+    xlen -= i;
   }
 }
+
