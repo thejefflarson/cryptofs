@@ -138,7 +138,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     unsigned char mpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(mpad, 0, csize);
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
-    printf("%i\n", ruroh);
+
     if(ruroh == -1)
       return -ENXIO;
 
