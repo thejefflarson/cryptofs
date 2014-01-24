@@ -143,7 +143,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
     unsigned char mpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(mpad, 0, csize);
-    printf("reading: %i\n", bsize);
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
 
