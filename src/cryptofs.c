@@ -157,6 +157,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     unsigned char mpad[csize + crypto_secretbox_ZEROBYTES];
     unsigned char cpad[csize + crypto_secretbox_ZEROBYTES];
     memset(mpad, 0, csize + crypto_secretbox_ZEROBYTES);
+    memset(cpad, 0, csize + crypto_secretbox_ZEROBYTES);
 
     if(block_size - delta < block_size) {
       // we are at a first partial block, we have to read the rest of the data
