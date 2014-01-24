@@ -35,6 +35,11 @@ char * _crypto_path(const char *path){
 static int crypto_getattr(const char *path, struct stat *st){
   WITH_CRYPTO_PATH(int err = lstat(cpath, st))
 
+  int num_blocks = st->st_size / block_size;
+  size_t total_overhead = num_blocks * (crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES);
+  if(st->st_size % block_size != 0) total_overhead += (crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES);
+  st->st_size -= total_overhead;
+
   CHECK_ERR
 }
 
@@ -123,28 +128,31 @@ static int crypto_read(const char *path, char *buf, size_t size,
   off_t delta = off - boff;
 
   while(size > 0) {
-    char block[block_size];
-    size_t res = pread(inf->fh, block, block_size, boff);
+    int bsize = (size < block_size ? size : block_size);
+    char block[size];
+    size_t res = pread(inf->fh, block, bsize, boff);
     if(res == -1)
       return -errno;
 
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    int csize = block_size - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
+    int csize = bsize - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
     unsigned char cpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
     unsigned char mpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(mpad, 0, csize);
+    printf("reading: %i\n", bsize);
+
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
 
     if(ruroh == -1)
       return -ENXIO;
 
-    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, block_size - delta);
-    size  -= res - delta - crypto_secretbox_NONCEBYTES - (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
-    red   += res - delta - crypto_secretbox_NONCEBYTES - (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
+    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta);
+    size  -= res - delta - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
+    red   += res - delta - crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES;
     boff  += res;
     delta  = 0;
   }
@@ -187,7 +195,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     crypto_secretbox(cpad, mpad, msize, nonce, key);
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
-
     int res = pwrite(inf->fh, block, to_write, boff);
     if(res == -1)
       return -errno;
