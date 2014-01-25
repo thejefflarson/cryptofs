@@ -2,11 +2,12 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pwd.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
+#include <termios.h>
+
 
 #include "lib/tweetnacl.h"
 #include <fuse.h>
@@ -325,6 +326,29 @@ static struct fuse_operations crypto_ops = {
   .chown     = crypto_chown
 };
 
+// from: http://www.gnu.org/software/libc/manual/html_node/getpass.html
+ssize_t _crypto_getpass(char **lineptr, size_t *n, FILE *stream){
+  struct termios old, new;
+  int nread = 0;
+
+  /* Turn echoing off and fail if we can't. */
+  if (tcgetattr(fileno(stream), &old) != 0)
+    return -1;
+  new = old;
+  new.c_lflag &= ~ECHO;
+  if (tcsetattr(fileno(stream), TCSAFLUSH, &new) != 0)
+    return -1;
+
+  /* Read the password. */
+  nread = getline(lineptr, n, stream);
+
+  /* Restore terminal. */
+  (void) tcsetattr(fileno(stream), TCSAFLUSH, &old);
+
+  return nread;
+}
+
+
 int main(int argc, char *argv[]) {
   if(argc < 3) {
     printf("not enough arguments, usage: cryptofs <encdir> <mount>\n");
@@ -337,9 +361,21 @@ int main(int argc, char *argv[]) {
     else
       fuse_opt_add_arg(&args, argv[i]);
   }
-  char *pw = getpass("enter password: ");
-  crypto_hash(key, (unsigned char *) pw, strnlen(pw, _PASSWORD_LEN));
-  memset(pw, 0, strnlen(pw, _PASSWORD_LEN));
+
+  printf("enter password: ");
+  char *pw;
+  size_t pwsize;
+  ssize_t nread = _crypto_getpass(&pw, &pwsize, stdin);
+  puts("");
+
+  if(nread < 0){
+    printf("%s\n", strerror(errno));
+    return errno;
+  }
+
+  crypto_hash(key, (unsigned char *) pw, nread);
+  memset(pw, 0, nread);
+  free(pw);
   int ret = fuse_main(args.argc, args.argv, &crypto_ops, NULL);
   fuse_opt_free_args(&args);
   free(crypto_dir);
