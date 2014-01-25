@@ -13,8 +13,8 @@
 
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
-static size_t block_size = 4096; // OSX Page Size
 static int crypto_PADDING = crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
+static size_t block_size = 4096; // OSX Page Size
 
 #define WITH_CRYPTO_PATH(line) \
   char *cpath = _crypto_path(path); \
@@ -149,7 +149,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memset(mpad, 0, csize);
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
-    printf("%i", ruroh);
     if(ruroh == -1)
       return -ENXIO;
 
@@ -159,6 +158,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     idx  += 1;
     off  += delta;
   }
+  printf("%zu\n", red);
 
   return red;
 }
@@ -197,7 +197,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       // and append the new stuff to our buffer.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
-      printf("%zu %llu\n", leftovers, block_off);
       char b[leftovers];
       int res = crypto_read(path, b, leftovers, block_off, inf);
       if(res < 0) return res;
@@ -218,7 +217,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     size    -= res;
     off     += res;
   }
-  printf("%zu\n", written);
   return written;
 }
 
