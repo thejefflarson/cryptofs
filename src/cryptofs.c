@@ -339,6 +339,7 @@ int main(int argc, char *argv[]) {
   }
   char *pw = getpass("enter password: ");
   crypto_hash(key, (unsigned char *) pw, strnlen(pw, _PASSWORD_LEN));
+  memset(pw, 0, strnlen(pw, _PASSWORD_LEN));
   int ret = fuse_main(args.argc, args.argv, &crypto_ops, NULL);
   fuse_opt_free_args(&args);
   free(crypto_dir);
