@@ -13,6 +13,6 @@ expect 'dd if=/dev/zero of=./file bs=1 count=65535'
 expect 'echo "1" >> ./file'
 cd ..
 
-# umount ./two
-# rm -rf ./one
-# rm -rf ./two
+umount ./two
+rm -rf ./one
+rm -rf ./two
