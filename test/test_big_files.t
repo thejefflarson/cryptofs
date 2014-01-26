@@ -1,15 +1,18 @@
 #! /usr/bin/env bash
+# set -x
+dir=`dirname $0`
+. ${dir}/utils.sh
+cd `dirname ${0}`
 
 mkdir -p ./one
 mkdir -p ./two
-
-echo 'pass' | ../build/cryptofs ./one ./two
-sleep 1
+echo "1..3"
+expect "echo 'pass' | ../build/cryptofs ./one ./two"
 cd ./two
-dd if=/dev/zero of=./file bs=1 count=65535
-echo '1' >> ./file
+expect 'dd if=/dev/zero of=./file bs=1 count=65535'
+expect 'echo "1" >> ./file'
 cd ..
 
-umount ./two
-rm -rf ./one
-rm -rf ./two
+# umount ./two
+# rm -rf ./one
+# rm -rf ./two
