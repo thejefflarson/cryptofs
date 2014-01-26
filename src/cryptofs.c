@@ -213,7 +213,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     crypto_secretbox(cpad, mpad, msize, nonce, key);
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
-    int res = pwrite(inf->fh, buf, to_write, block_size * idx) - crypto_PADDING;
+    int res = pwrite(inf->fh, block, to_write, block_size * idx) - crypto_PADDING;
     if(res == -1)
       return -errno;
     written += res;
