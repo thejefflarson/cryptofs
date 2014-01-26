@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
 
-if python ./waf configure
-then
-	echo "
-all:
-	python waf
-clean:
-	python waf clean
-PHONY: all clean
-" > Makefile
-fi
+python ./waf configure
+

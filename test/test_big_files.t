@@ -6,7 +6,7 @@ mkdir -p ./two
 echo 'pass' | ../build/cryptofs ./one ./two
 sleep 1
 cd ./two
-dd if=/dev/zero of=./file bs=1 count=65536
+dd if=/dev/zero of=./file bs=1 count=65535
 echo '1' >> ./file
 cd ..
 
