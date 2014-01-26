@@ -196,10 +196,13 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     } else {
       // we are at a first partial block, we have to read the rest of the data
       // and append the new stuff to our buffer.
+
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
+
       char b[leftovers];
       int res = crypto_read(path, b, leftovers, block_off, inf);
+      printf("%i\n", res);
       if(res < 0) return res;
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
@@ -331,19 +334,21 @@ ssize_t _crypto_getpass(char **lineptr, size_t *n, FILE *stream){
   struct termios old, new;
   int nread = 0;
 
-  /* Turn echoing off and fail if we can't. */
-  if (tcgetattr(fileno(stream), &old) != 0)
-    return -1;
-  new = old;
-  new.c_lflag &= ~ECHO;
-  if (tcsetattr(fileno(stream), TCSAFLUSH, &new) != 0)
-    return -1;
+  if(isatty(fileno(stream))){
+    /* Turn echoing off and fail if we can't. */
+    if (tcgetattr(fileno(stream), &old) != 0)
+      return -1;
+    new = old;
+    new.c_lflag &= ~ECHO;
+    if (tcsetattr(fileno(stream), TCSAFLUSH, &new) != 0)
+      return -1;
+  }
 
   /* Read the password. */
   nread = getline(lineptr, n, stream);
 
-  /* Restore terminal. */
-  (void) tcsetattr(fileno(stream), TCSAFLUSH, &old);
+  if(isatty(fileno(stream)))
+    (void) tcsetattr(fileno(stream), TCSAFLUSH, &old);
 
   return nread;
 }

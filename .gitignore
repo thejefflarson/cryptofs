@@ -2,3 +2,4 @@ build
 .waf*
 .lock*
 Makefile
+.DS_Store
