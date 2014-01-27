@@ -14,7 +14,7 @@
 
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
-static int crypto_PADDING = crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
+static int crypto_PADDING = crypto_secretbox_NONCEBYTES + (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
 static size_t block_size = 4096; // OSX Page Size
 
 #define WITH_CRYPTO_PATH(line) \
@@ -159,7 +159,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
     idx  += 1;
     off  += delta;
   }
-  printf("%zu\n", red);
 
   return red;
 }
@@ -173,13 +172,14 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
   size_t written = 0;
   int idx = off / (block_size - crypto_PADDING);
-  unsigned char block[block_size];
 
   while(size > 0) {
     int aligned = (off % (block_size - crypto_PADDING) == 0);
-    memset(block, 0, block_size);
+
 
     size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
+    unsigned char block[to_write];
+    memset(block, 0, to_write);
 
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
@@ -209,9 +209,12 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       to_write += res;
     }
 
-    crypto_secretbox(cpad, mpad, msize, nonce, key);
+    int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
+    if(ohno < 0) return -ENXIO;
+
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
+
     int res = pwrite(inf->fh, block, to_write, block_size * idx) - crypto_PADDING;
     if(res == -1)
       return -errno;
