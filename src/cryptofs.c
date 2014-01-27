@@ -34,16 +34,26 @@ char * _crypto_path(const char *path){
   return ret;
 }
 
+static int crypto_fsync(const char *path, int datasync, struct fuse_file_info *inf){
+  (void) path;
+  (void) datasync;
+
+  int err = fsync(inf->fh);
+
+  CHECK_ERR
+}
+
 static int crypto_getattr(const char *path, struct stat *st){
   WITH_CRYPTO_PATH(int err = lstat(cpath, st))
-  printf("size before: %lld\n", st->st_size);
-  size_t num_blocks = st->st_size / block_size;
-  size_t total_overhead = num_blocks * crypto_PADDING;
-  if(st->st_size % block_size > 0)
-    total_overhead += crypto_PADDING;
-  st->st_size -= total_overhead;
-  if(st->st_size < 0) st->st_size = 0;
-  printf("size after: %lld\n", st->st_size);
+
+  if(S_ISREG(st->st_mode)) {
+    size_t num_blocks = st->st_size / block_size;
+    size_t total_overhead = num_blocks * crypto_PADDING;
+    if(st->st_size % block_size > 0)
+      total_overhead += crypto_PADDING;
+    st->st_size -= total_overhead;
+  }
+
   CHECK_ERR
 }
 
@@ -128,12 +138,12 @@ static int crypto_read(const char *path, char *buf, size_t size,
   (void) path;
 
   size_t red = 0;
-
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
     size_t delta = off % (block_size - crypto_PADDING);
     size_t bsize = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
-    char block[size];
+
+    char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx) - crypto_PADDING;
     if(res == -1)
       return -errno;
@@ -141,20 +151,20 @@ static int crypto_read(const char *path, char *buf, size_t size,
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    size_t csize = bsize - crypto_PADDING ;
+    size_t csize = bsize - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
 
-    unsigned char cpad[csize + crypto_secretbox_BOXZEROBYTES];
+    unsigned char cpad[csize];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
 
-    unsigned char mpad[csize + crypto_secretbox_BOXZEROBYTES];
+    unsigned char mpad[csize];
     memset(mpad, 0, csize);
 
-    int ruroh = crypto_secretbox_open(mpad, cpad, csize + crypto_secretbox_BOXZEROBYTES, nonce, key);
+    int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
     if(ruroh == -1)
       return -ENXIO;
 
-    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta);
+    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_BOXZEROBYTES);
     size -= res;
     red  += res;
     off  += res;
@@ -171,9 +181,9 @@ static int crypto_write(const char *path, const char *buf, size_t size,
   (void) path;
 
   size_t written = 0;
+
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
-    printf("%i %llu %zu %llu\n", idx, off, size, off % (block_size - crypto_PADDING));
 
     // Grab a random nonce
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
@@ -198,7 +208,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
       char b[leftovers];
       int res = crypto_read(path, b, leftovers, block_off, inf);
-      printf("%i", res);
       if(res < 0) return res;
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
@@ -213,10 +222,10 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     memset(block, 0, to_write);
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
-
     int res = pwrite(inf->fh, block, to_write, block_size * idx) - crypto_PADDING;
     if(res == -1)
       return -errno;
+
     written += res;
     size    -= res;
     off     += res;
@@ -308,6 +317,7 @@ static int crypto_chown(const char *path, uid_t uid, gid_t gid){
 }
 
 static struct fuse_operations crypto_ops = {
+  .fsync     = crypto_fsync,
   .getattr   = crypto_getattr,
   .readdir   = crypto_readdir,
   .mknod     = crypto_mknod,
