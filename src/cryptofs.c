@@ -345,7 +345,6 @@ ssize_t _crypto_getpass(char **lineptr, size_t *n, FILE *stream){
   int nread = 0;
 
   if(isatty(fileno(stream))){
-    /* Turn echoing off and fail if we can't. */
     if (tcgetattr(fileno(stream), &old) != 0)
       return -1;
     new = old;
@@ -354,7 +353,6 @@ ssize_t _crypto_getpass(char **lineptr, size_t *n, FILE *stream){
       return -1;
   }
 
-  /* Read the password. */
   nread = getline(lineptr, n, stream);
 
   if(isatty(fileno(stream)))
