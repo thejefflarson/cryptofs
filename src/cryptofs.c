@@ -140,7 +140,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    size_t csize = bsize - crypto_PADDING;
+    size_t csize = bsize - crypto_PADDING ;
 
     unsigned char cpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(cpad, 0, csize);
@@ -149,7 +149,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     unsigned char mpad[csize + crypto_secretbox_BOXZEROBYTES];
     memset(mpad, 0, csize);
 
-    int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
+    int ruroh = crypto_secretbox_open(mpad, cpad, csize + crypto_secretbox_BOXZEROBYTES, nonce, key);
     if(ruroh == -1)
       return -ENXIO;
 
