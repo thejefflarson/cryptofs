@@ -36,13 +36,14 @@ char * _crypto_path(const char *path){
 
 static int crypto_getattr(const char *path, struct stat *st){
   WITH_CRYPTO_PATH(int err = lstat(cpath, st))
-
+  printf("size before: %lld\n", st->st_size);
   size_t num_blocks = st->st_size / block_size;
   size_t total_overhead = num_blocks * crypto_PADDING;
   if(st->st_size % block_size > 0)
     total_overhead += crypto_PADDING;
   st->st_size -= total_overhead;
-
+  if(st->st_size < 0) st->st_size = 0;
+  printf("size after: %lld\n", st->st_size);
   CHECK_ERR
 }
 
@@ -127,10 +128,10 @@ static int crypto_read(const char *path, char *buf, size_t size,
   (void) path;
 
   size_t red = 0;
-  int idx = off / (block_size - crypto_PADDING);
-  size_t delta = off % (block_size - crypto_PADDING);
 
   while(size > 0) {
+    int idx = off / (block_size - crypto_PADDING);
+    size_t delta = off % (block_size - crypto_PADDING);
     size_t bsize = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     char block[size];
     int res = pread(inf->fh, block, bsize, block_size * idx) - crypto_PADDING;
@@ -156,8 +157,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta);
     size -= res;
     red  += res;
-    idx  += 1;
-    off  += delta;
+    off  += res;
   }
 
   return red;
@@ -171,37 +171,34 @@ static int crypto_write(const char *path, const char *buf, size_t size,
   (void) path;
 
   size_t written = 0;
-  int idx = off / (block_size - crypto_PADDING);
-
   while(size > 0) {
-    int aligned = (off % (block_size - crypto_PADDING) == 0);
+    int idx = off / (block_size - crypto_PADDING);
+    printf("%i %llu %zu %llu\n", idx, off, size, off % (block_size - crypto_PADDING));
 
-
-    size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
-    unsigned char block[to_write];
-    memset(block, 0, to_write);
-
+    // Grab a random nonce
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
 
+    // Set up the necessary buffers
+    size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     size_t msize = to_write - crypto_PADDING;
     unsigned char mpad[msize + crypto_secretbox_ZEROBYTES];
     unsigned char cpad[msize + crypto_secretbox_ZEROBYTES];
     memset(mpad, 0, msize + crypto_secretbox_ZEROBYTES);
     memset(cpad, 0, msize + crypto_secretbox_ZEROBYTES);
 
-    if(aligned) {
-      // we are writing a full block, or the last partial block
+    if(off % (block_size - crypto_PADDING) == 0) {
+      // Writing a full block, or the last partial block
       memcpy(mpad + crypto_secretbox_ZEROBYTES, buf + written, msize);
     } else {
-      // we are at a first partial block, we have to read the rest of the data
+      // At a first partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
-
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
 
       char b[leftovers];
       int res = crypto_read(path, b, leftovers, block_off, inf);
+      printf("%i", res);
       if(res < 0) return res;
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
@@ -212,6 +209,8 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
     if(ohno < 0) return -ENXIO;
 
+    unsigned char block[to_write];
+    memset(block, 0, to_write);
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
 
@@ -219,7 +218,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     if(res == -1)
       return -errno;
     written += res;
-    idx     += 1;
     size    -= res;
     off     += res;
   }
