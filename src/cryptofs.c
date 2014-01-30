@@ -209,7 +209,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
       char b[leftovers];
       int res = crypto_read(path, b, leftovers, block_off, &of);
-      printf("%s\n", strerror(-res));
       if(res < -1) return res;
 
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
