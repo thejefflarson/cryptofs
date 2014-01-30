@@ -145,14 +145,10 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
-
-    if(res == -1) {
-      printf("res: %i off: %lld size: %zu\n", errno, off, size);
-
+    if(res == -1)
       return -errno;
-    }
 
-    res -= crypto_PADDING;
+
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
@@ -182,8 +178,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
 // cleaned up.
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
-  (void) path;
-
   size_t written = 0;
 
   while(size > 0) {
@@ -196,10 +190,10 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     // Set up the necessary buffers
     size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     size_t msize = to_write - crypto_PADDING;
-    unsigned char mpad[msize + crypto_secretbox_ZEROBYTES];
-    unsigned char cpad[msize + crypto_secretbox_ZEROBYTES];
-    memset(mpad, 0, msize + crypto_secretbox_ZEROBYTES);
-    memset(cpad, 0, msize + crypto_secretbox_ZEROBYTES);
+    unsigned char mpad[block_size];
+    unsigned char cpad[block_size];
+    memset(mpad, 0, block_size);
+    memset(cpad, 0, block_size);
 
     if(off % (block_size - crypto_PADDING) == 0) {
       // Writing a full block, or the last partial block
@@ -210,9 +204,16 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
 
+      struct fuse_file_info of = {.flags = O_RDONLY};
+      int fd = crypto_open(path, &of);
+      if(fd == -1) return -errno;
+
       char b[leftovers];
-      int res = crypto_read(path, b, leftovers, block_off, inf);
-      if(res == -1) return res;
+      struct fuse_file_info nf = {.fh = fd};
+      int res = crypto_read(path, b, leftovers, block_off, &nf);
+      printf("%s\n", strerror(-res));
+      if(res == -1) return -errno;
+
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
       msize += res;
@@ -371,12 +372,14 @@ int main(int argc, char *argv[]) {
     printf("not enough arguments, usage: cryptofs <encdir> <mount>\n");
     return 1;
   }
+
   struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
   for(int i = 0; i < argc; i++) {
-    if (i == 1)
+    if(i == 1) {
       crypto_dir = realpath(argv[i], NULL);
-    else
+    } else {
       fuse_opt_add_arg(&args, argv[i]);
+    }
   }
 
   printf("enter password: ");
