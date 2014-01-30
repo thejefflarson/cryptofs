@@ -144,15 +144,19 @@ static int crypto_read(const char *path, char *buf, size_t size,
     size_t bsize = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
 
     char block[bsize];
-    int res = pread(inf->fh, block, bsize, block_size * idx) - crypto_PADDING;
-    if(res == -1)
-      return -errno;
+    int res = pread(inf->fh, block, bsize, block_size * idx);
 
+    if(res == -1) {
+      printf("res: %i off: %lld size: %zu\n", errno, off, size);
+
+      return -errno;
+    }
+
+    res -= crypto_PADDING;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    size_t csize = bsize - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
-
+    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char cpad[csize];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
@@ -208,7 +212,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
       char b[leftovers];
       int res = crypto_read(path, b, leftovers, block_off, inf);
-      if(res < 0) return res;
+      if(res == -1) return res;
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
       msize += res;
