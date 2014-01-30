@@ -145,9 +145,11 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
-    if(res == -1)
+    if(res == -1){
+      printf("%s\n", strerror(errno));
       return -errno;
-
+    }
+    res -= crypto_PADDING;
 
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
@@ -174,8 +176,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 }
 
 // We encrypt like GDBE each sector has a crypto_secretbox_NONCEBYTES-long
-// nonce prepended to each sector. This is so confusing, and needs to be
-// cleaned up.
+// nonce prepended to each sector.
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   size_t written = 0;
@@ -209,10 +210,9 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       if(fd == -1) return -errno;
 
       char b[leftovers];
-      struct fuse_file_info nf = {.fh = fd};
-      int res = crypto_read(path, b, leftovers, block_off, &nf);
+      int res = crypto_read(path, b, leftovers, block_off, &of);
       printf("%s\n", strerror(-res));
-      if(res == -1) return -errno;
+      if(res == -1) return res;
 
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
