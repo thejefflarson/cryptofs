@@ -165,9 +165,9 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_BOXZEROBYTES);
 
-    size -= res;
-    red  += res;
-    off  += res;
+    size -= res - crypto_PADDING;
+    red  += res - crypto_PADDING;
+    off  += res - crypto_PADDING;
   }
 
   return red;
@@ -212,7 +212,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       if(res < -1) return res;
 
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
-      memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf, msize);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf + written, msize - leftovers);
       msize += res;
       to_write += res;
     }
