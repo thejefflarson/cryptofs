@@ -178,7 +178,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   size_t written = 0;
-
+  printf("%zu %lld\n", size, off);
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
 
@@ -202,19 +202,22 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       // and append the new stuff to our buffer.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
+      printf("inside: %zu %lld %zu\n", size, off, msize);
 
       struct fuse_file_info of = {.flags = O_RDONLY};
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
 
-      char b[leftovers];
-      int res = crypto_read(path, b, leftovers, block_off, &of);
-      if(res < -1) return res;
 
+      char b[block_size];
+      int res = crypto_read(path, b, leftovers, block_off, &of);
+      if(res < 0) return res;
+      printf("inside: %zu\n", leftovers + msize);
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, leftovers);
-      memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf + written, msize);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES + leftovers, buf + written, msize - leftovers);
       msize += res;
       to_write += res;
+      printf("inside: %zu %zu %zu %d\n", block_size, leftovers, msize, res);
     }
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
