@@ -229,11 +229,13 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     int res = pwrite(inf->fh, block, to_write, block_size * idx) - crypto_PADDING;
     if(res == -1)
       return -errno;
-
+    printf("written: %zu, %d size: %zu\n",  written, res, size);
     written += res;
     size    -= res;
     off     += res;
+    printf("%zu\n", size);
   }
+  printf("exit: %zu\n", written);
   return written;
 }
 
