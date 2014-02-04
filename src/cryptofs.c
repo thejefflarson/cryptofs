@@ -181,6 +181,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
+    size_t fudge = 0;
     // Grab a random nonce
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
@@ -209,14 +210,15 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       char b[block_size];
       int res = crypto_read(path, b, leftovers, block_off, &of);
       if(res < 0) return res;
-
+      puts("yay");
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
       memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
 
       to_write += res;
       msize    += res;
-      // off      -= res;
-      // size     += res;
+      off      -= res;
+      size     += res;
+      fudge     = leftovers;
     }
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
@@ -227,12 +229,13 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     memcpy(block, nonce, crypto_secretbox_NONCEBYTES);
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
 
-    int res = pwrite(inf->fh, block, to_write, block_size * idx) - crypto_PADDING;
+    int res = pwrite(inf->fh, block, to_write, block_size * idx);
     if(res == -1)
       return -errno;
 
-    written += res;
-    size    -= res; // - fudge;
+    res     -= crypto_PADDING;
+    written += res - fudge;
+    size    -= res;
     off     += res;
   }
 
