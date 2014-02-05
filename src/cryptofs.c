@@ -163,7 +163,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     if(ruroh == -1)
       return -ENXIO;
 
-    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_BOXZEROBYTES);
+    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_ZEROBYTES);
 
     size -= res - crypto_PADDING;
     red  += res - crypto_PADDING;
