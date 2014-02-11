@@ -163,7 +163,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     if(ruroh == -1)
       return -ENXIO;
 
-    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_ZEROBYTES);
+    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_BOXZEROBYTES);
 
     size -= res - crypto_PADDING;
     red  += res - crypto_PADDING;
@@ -181,7 +181,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
-    size_t fudge = 0;
+
     // Grab a random nonce
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
@@ -189,6 +189,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     // Set up the necessary buffers
     size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     size_t msize = to_write - crypto_PADDING;
+    size_t fudge = 0;
     unsigned char mpad[block_size];
     unsigned char cpad[block_size];
     memset(mpad, 0, block_size);
@@ -215,9 +216,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
       to_write += res;
       msize    += res;
-      off      -= res;
-      size     += res;
-      fudge     = leftovers;
+      fudge     = res;
     }
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
@@ -232,10 +231,9 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     if(res == -1)
       return -errno;
 
-    res     -= crypto_PADDING;
     written += res - fudge;
-    size    -= res;
-    off     += res;
+    size    -= res - fudge;
+    off     += res - fudge;
   }
 
   return written;
