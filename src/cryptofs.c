@@ -145,13 +145,20 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
+
     if(res == -1)
       return -errno;
 
+    if(res == 0)
+      break;
+
+    if(res < crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES)
+      return -ENXIO;
+
+    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char cpad[csize];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
@@ -163,7 +170,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     if(ruroh == -1)
       return -ENXIO;
 
-    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_BOXZEROBYTES);
+    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_ZEROBYTES);
 
     size -= res - crypto_PADDING;
     red  += res - crypto_PADDING;
@@ -231,6 +238,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     if(res == -1)
       return -errno;
 
+    res     -= crypto_PADDING;
     written += res - fudge;
     size    -= res - fudge;
     off     += res - fudge;
