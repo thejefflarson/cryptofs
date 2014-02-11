@@ -14,7 +14,7 @@
 
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
-static int crypto_PADDING = crypto_secretbox_NONCEBYTES + (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
+static int crypto_PADDING = crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
 static size_t block_size = 4096; // OSX Page Size
 
 #define WITH_CRYPTO_PATH(line) \
@@ -149,12 +149,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
     if(res == -1)
       return -errno;
 
-    if(res == 0)
-      break;
-
-    if(res < crypto_secretbox_NONCEBYTES - crypto_secretbox_BOXZEROBYTES)
-      return -ENXIO;
-
     size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
@@ -214,6 +208,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       struct fuse_file_info of = {.flags = O_RDONLY};
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
+
 
       char b[block_size];
       int res = crypto_read(path, b, leftovers, block_off, &of);
