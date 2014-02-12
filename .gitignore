@@ -1,4 +1,5 @@
 build
+cryptofs.xcodeproj
 .waf*
 .lock*
 .DS_Store

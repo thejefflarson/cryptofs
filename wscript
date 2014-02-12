@@ -2,6 +2,7 @@
 
 
 def options(opt):
+    opt.load('xcode')
     opt.load('compiler_c')
 
 
