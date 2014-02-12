@@ -14,7 +14,7 @@
 
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
-static int crypto_PADDING = crypto_secretbox_NONCEBYTES + (crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES);
+static int crypto_PADDING = crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
 static size_t block_size = 4096; // OSX Page Size
 
 #define WITH_CRYPTO_PATH(line) \
@@ -145,13 +145,14 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
+
     if(res == -1)
       return -errno;
 
+    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
-    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char cpad[csize];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
@@ -181,7 +182,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
-    size_t fudge = 0;
+
     // Grab a random nonce
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     randombytes(nonce, crypto_secretbox_NONCEBYTES);
@@ -189,6 +190,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     // Set up the necessary buffers
     size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     size_t msize = to_write - crypto_PADDING;
+    size_t fudge = 0;
     unsigned char mpad[block_size];
     unsigned char cpad[block_size];
     memset(mpad, 0, block_size);
@@ -207,6 +209,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
 
+
       char b[block_size];
       int res = crypto_read(path, b, leftovers, block_off, &of);
       if(res < 0) return res;
@@ -215,9 +218,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
       to_write += res;
       msize    += res;
-      off      -= res;
-      size     += res;
-      fudge     = leftovers;
+      fudge     = res;
     }
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
@@ -234,8 +235,8 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
     res     -= crypto_PADDING;
     written += res - fudge;
-    size    -= res;
-    off     += res;
+    size    -= res - fudge;
+    off     += res - fudge;
   }
 
   return written;
