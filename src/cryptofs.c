@@ -150,7 +150,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
       int staterr = crypto_getattr(path, &st);
       if(staterr < 0) return staterr;
       if(st.st_size - red > size){
-        fudge  = st.st_size - red - size;
+        fudge  = st.st_size - off - size;
         bsize += fudge;
       }
     } else {
@@ -179,9 +179,9 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
 
-    size -= res - crypto_PADDING;
-    red  += res - crypto_PADDING;
-    off  += res - crypto_PADDING;
+    size -= res - crypto_PADDING - fudge;
+    red  += res - crypto_PADDING - fudge;
+    off  += res - crypto_PADDING - fudge;
   }
 
   return red;
