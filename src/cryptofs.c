@@ -24,8 +24,7 @@ static size_t block_size = 4096; // OSX Page Size
   free(cpath);
 
 #define CHECK_ERR \
-  if(err == -1) \
-    return -errno; \
+  if(err == -1) return -errno; \
   return 0;
 
 char * _crypto_path(const char *path){
@@ -135,13 +134,28 @@ static int crypto_unlink(const char *path) {
 
 static int crypto_read(const char *path, char *buf, size_t size,
                        off_t off, struct fuse_file_info *inf){
-  (void) path;
-
   size_t red = 0;
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
     size_t delta = off % (block_size - crypto_PADDING);
-    size_t bsize = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
+    size_t bsize = 0, fudge = 0;
+
+    if(size < block_size - crypto_PADDING) {
+      bsize = size + crypto_PADDING;
+      // We have to check that we aren't in partial block land, when reading from
+      // the end of the file by stating the file and checking that the requested
+      // offset isn't a slice of a partial block.
+      struct stat st;
+      memset(&st, 0, sizeof(st));
+      int staterr = crypto_getattr(path, &st);
+      if(staterr < 0) return staterr;
+      if(st.st_size - red > size){
+        fudge  = st.st_size - red - size;
+        bsize += fudge;
+      }
+    } else {
+      bsize = block_size;
+    }
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
@@ -149,10 +163,10 @@ static int crypto_read(const char *path, char *buf, size_t size,
     if(res == -1)
       return -errno;
 
-    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
 
+    size_t csize = res - crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
     unsigned char cpad[csize];
     memset(cpad, 0, csize);
     memcpy(cpad + crypto_secretbox_BOXZEROBYTES, block + crypto_secretbox_NONCEBYTES, csize);
@@ -161,10 +175,9 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memset(mpad, 0, csize);
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
-    if(ruroh == -1)
-      return -ENXIO;
+    if(ruroh == -1) return -ENXIO;
 
-    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - crypto_secretbox_ZEROBYTES);
+    memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
 
     size -= res - crypto_PADDING;
     red  += res - crypto_PADDING;
@@ -230,8 +243,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     memcpy(block + crypto_secretbox_NONCEBYTES, cpad + crypto_secretbox_BOXZEROBYTES, msize + crypto_secretbox_BOXZEROBYTES);
 
     int res = pwrite(inf->fh, block, to_write, block_size * idx);
-    if(res == -1)
-      return -errno;
+    if(res == -1) return -errno;
 
     res     -= crypto_PADDING;
     written += res - fudge;
