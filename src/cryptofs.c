@@ -8,7 +8,6 @@
 #include <dirent.h>
 #include <termios.h>
 
-
 #include "lib/tweetnacl.h"
 #include <fuse.h>
 
@@ -141,7 +140,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     size_t bsize = 0, fudge = 0;
 
     if(size < block_size - crypto_PADDING) {
-      bsize = size + crypto_PADDING;
+      bsize = size + crypto_PADDING + delta;
       // We have to check that we aren't in partial block land, when reading from
       // the end of the file by stating the file and checking that the requested
       // offset isn't a slice of a partial block.
@@ -149,7 +148,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
       memset(&st, 0, sizeof(st));
       int staterr = crypto_getattr(path, &st);
       if(staterr < 0) return staterr;
-      if(st.st_size - red > size){
+      if(st.st_size - off > size){
         fudge  = st.st_size - off - size;
         bsize += fudge;
       }
@@ -179,9 +178,9 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
 
-    size -= res - crypto_PADDING - fudge;
-    red  += res - crypto_PADDING - fudge;
-    off  += res - crypto_PADDING - fudge;
+    size -= res - crypto_PADDING - fudge - delta;
+    red  += res - crypto_PADDING - fudge - delta;
+    off  += res - crypto_PADDING - fudge - delta;
   }
 
   return red;
@@ -221,7 +220,6 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       struct fuse_file_info of = {.flags = O_RDONLY};
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
-
 
       char b[block_size];
       int res = crypto_read(path, b, leftovers, block_off, &of);
