@@ -227,7 +227,9 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       int res = crypto_read(path, b, leftovers, block_off, &of);
       if(res < 0) return res;
       close(fd);
+
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
+      // there is a bug here if res + msize > to_write so FIXME
       memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
 
       fudge = res;
