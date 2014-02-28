@@ -176,7 +176,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memset(mpad, 0, csize);
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
-    printf("%i %lld %zu\n", ruroh, off, size);
     if(ruroh == -1) return -ENXIO;
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
@@ -194,7 +193,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   size_t written = 0;
-  puts("called!");
+
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
 
@@ -215,7 +214,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       // Writing a full block, or the last partial block
       memcpy(mpad + crypto_secretbox_ZEROBYTES, buf + written, msize);
     } else {
-      // At a first partial block, have to read the rest of the data
+      // At partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
@@ -228,13 +227,10 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       int res = crypto_read(path, b, leftovers, block_off, &of);
       if(res < 0) return res;
       close(fd);
-
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
-      memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize - res);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
+
       fudge = res;
-      off  -= res;
-      size += res;
-      idx   = off / (block_size - crypto_PADDING);
     }
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);

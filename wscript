@@ -14,17 +14,17 @@ def configure(cnf):
 
 
 def build(bld):
-    # bld.stlib(
-    #     features='c cstlib',
-    #     source='./lib/tweetnacl.c',
-    #     target='tweetnacl'
-    # )
+    bld.stlib(
+        features='c cstlib',
+        source='./lib/tweetnacl.c',
+        target='tweetnacl'
+    )
 
     bld.program(
         features='c',
-        source=bld.path.ant_glob(['lib/*.c', 'src/*.c']),
+        source=bld.path.ant_glob(['src/*.c']),
         includes='.',
         target='cryptofs',
-        # use='tweetnacl',
+        use='tweetnacl',
         uselib='FUSE'
     )
