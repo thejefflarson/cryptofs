@@ -158,9 +158,11 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
-
     if(res == -1)
       return -errno;
+
+    if(res == 0)
+      return red;
 
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
@@ -174,6 +176,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memset(mpad, 0, csize);
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
+    printf("%i %lld %zu\n", ruroh, off, size);
     if(ruroh == -1) return -ENXIO;
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
@@ -191,7 +194,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   size_t written = 0;
-
+  puts("called!");
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
 
@@ -224,12 +227,14 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       char b[block_size];
       int res = crypto_read(path, b, leftovers, block_off, &of);
       if(res < 0) return res;
-      memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
-      memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
+      close(fd);
 
-      to_write += res;
-      msize    += res;
-      fudge     = res;
+      memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
+      memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize - res);
+      fudge = res;
+      off  -= res;
+      size += res;
+      idx   = off / (block_size - crypto_PADDING);
     }
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
@@ -245,8 +250,8 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
     res     -= crypto_PADDING;
     written += res - fudge;
-    size    -= res - fudge;
-    off     += res - fudge;
+    size    -= res;
+    off     += res;
   }
 
   return written;
