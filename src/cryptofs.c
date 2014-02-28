@@ -193,7 +193,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   size_t written = 0;
-
+  puts("called!");
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
 
@@ -216,6 +216,8 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     } else {
       // At partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
+      // Note to self this all needs to go above where we define mpad and cpad,
+      // or we need to malloc, which is probably better.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
 
@@ -229,8 +231,13 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       close(fd);
 
       memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
-      // there is a bug here if res + msize > to_write so FIXME
-      memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
+
+      if(msize > res) {
+        memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize - res);
+        to_write -= res;
+      } else {
+        memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
+      }
 
       fudge = res;
     }
@@ -248,8 +255,8 @@ static int crypto_write(const char *path, const char *buf, size_t size,
 
     res     -= crypto_PADDING;
     written += res - fudge;
-    size    -= res;
-    off     += res;
+    size    -= res - fudge;
+    off     += res - fudge;
   }
 
   return written;
