@@ -205,15 +205,9 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     size_t msize = to_write - crypto_PADDING;
     size_t fudge = 0;
-    unsigned char mpad[block_size];
-    unsigned char cpad[block_size];
-    memset(mpad, 0, block_size);
-    memset(cpad, 0, block_size);
 
-    if(off % (block_size - crypto_PADDING) == 0) {
-      // Writing a full block, or the last partial block
-      memcpy(mpad + crypto_secretbox_ZEROBYTES, buf + written, msize);
-    } else {
+    char b[block_size];
+    if(off % (block_size - crypto_PADDING) != 0) {
       // At partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
       // Note to self this all needs to go above where we define mpad and cpad,
@@ -225,22 +219,20 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
 
-      char b[block_size];
       int res = crypto_read(path, b, leftovers, block_off, &of);
       if(res < 0) return res;
       close(fd);
 
-      memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
-
-      if(msize > res) {
-        memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize - res);
-        to_write -= res;
-      } else {
-        memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
-      }
-
-      fudge = res;
+      to_write += res;
+      fudge     = res;
     }
+
+    unsigned char mpad[to_write];
+    unsigned char cpad[to_write];
+    memset(mpad, 0, to_write);
+    memset(cpad, 0, to_write);
+    memcpy(mpad + crypto_secretbox_ZEROBYTES, b, fudge);
+    memcpy(mpad + crypto_secretbox_ZEROBYTES + fudge, buf + written, msize);
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
     if(ohno < 0) return -ENXIO;
