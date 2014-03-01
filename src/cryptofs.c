@@ -193,7 +193,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
   size_t written = 0;
-  puts("called!");
+
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
 
