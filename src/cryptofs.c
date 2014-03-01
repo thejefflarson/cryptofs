@@ -206,7 +206,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     size_t msize = to_write - crypto_PADDING;
     size_t fudge = 0;
 
-    char b[block_size];
+    char padding[block_size];
     if(off % (block_size - crypto_PADDING) != 0) {
       // At partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
@@ -231,7 +231,7 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     unsigned char cpad[to_write];
     memset(mpad, 0, to_write);
     memset(cpad, 0, to_write);
-    memcpy(mpad + crypto_secretbox_ZEROBYTES, b, fudge);
+    memcpy(mpad + crypto_secretbox_ZEROBYTES, padding, fudge);
     memcpy(mpad + crypto_secretbox_ZEROBYTES + fudge, buf + written, msize);
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
