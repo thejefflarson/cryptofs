@@ -158,6 +158,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
+
     if(res == -1)
       return -errno;
 
@@ -188,7 +189,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
   return red;
 }
 
-// We encrypt like GDBE each sector has a crypto_secretbox_NONCEBYTES-long
+// We encrypt like GDBE each sector has a random
 // nonce prepended to each sector.
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
@@ -210,20 +211,16 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     if(off % (block_size - crypto_PADDING) != 0) {
       // At partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
-      // Note to self this all needs to go above where we define mpad and cpad,
-      // or we need to malloc, which is probably better.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
 
       struct fuse_file_info of = {.flags = O_RDONLY};
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
-
-      int res = crypto_read(path, b, leftovers, block_off, &of);
+      int res = crypto_read(path, padding, leftovers, block_off, &of);
       if(res < 0) return res;
       close(fd);
-
-      to_write += res;
+      if(to_write + res < block_size - crypto_PADDING) to_write += res;
       fudge     = res;
     }
 
