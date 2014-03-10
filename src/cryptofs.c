@@ -8,7 +8,6 @@
 #include <dirent.h>
 #include <termios.h>
 
-
 #include "lib/tweetnacl.h"
 #include <fuse.h>
 
@@ -141,7 +140,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
     size_t bsize = 0, fudge = 0;
 
     if(size < block_size - crypto_PADDING) {
-      bsize = size + crypto_PADDING;
+      bsize = size + crypto_PADDING + delta;
       // We have to check that we aren't in partial block land, when reading from
       // the end of the file by stating the file and checking that the requested
       // offset isn't a slice of a partial block.
@@ -149,7 +148,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
       memset(&st, 0, sizeof(st));
       int staterr = crypto_getattr(path, &st);
       if(staterr < 0) return staterr;
-      if(st.st_size - red > size){
+      if(st.st_size - off > size){
         fudge  = st.st_size - off - size;
         bsize += fudge;
       }
@@ -162,6 +161,9 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     if(res == -1)
       return -errno;
+
+    if(res == 0)
+      return red;
 
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
     memcpy(nonce, block, crypto_secretbox_NONCEBYTES);
@@ -179,15 +181,15 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
 
-    size -= res - crypto_PADDING - fudge;
-    red  += res - crypto_PADDING - fudge;
-    off  += res - crypto_PADDING - fudge;
+    size -= res - crypto_PADDING - fudge - delta;
+    red  += res - crypto_PADDING - fudge - delta;
+    off  += res - crypto_PADDING - fudge - delta;
   }
 
   return red;
 }
 
-// We encrypt like GDBE each sector has a crypto_secretbox_NONCEBYTES-long
+// We encrypt like GDBE each sector has a random
 // nonce prepended to each sector.
 static int crypto_write(const char *path, const char *buf, size_t size,
                         off_t off, struct fuse_file_info *inf){
@@ -204,16 +206,10 @@ static int crypto_write(const char *path, const char *buf, size_t size,
     size_t to_write = size < block_size - crypto_PADDING ? size + crypto_PADDING : block_size;
     size_t msize = to_write - crypto_PADDING;
     size_t fudge = 0;
-    unsigned char mpad[block_size];
-    unsigned char cpad[block_size];
-    memset(mpad, 0, block_size);
-    memset(cpad, 0, block_size);
 
-    if(off % (block_size - crypto_PADDING) == 0) {
-      // Writing a full block, or the last partial block
-      memcpy(mpad + crypto_secretbox_ZEROBYTES, buf + written, msize);
-    } else {
-      // At a first partial block, have to read the rest of the data
+    char padding[block_size];
+    if(off % (block_size - crypto_PADDING) != 0) {
+      // At partial block, have to read the rest of the data
       // and append the new stuff to our buffer.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
@@ -221,18 +217,19 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       struct fuse_file_info of = {.flags = O_RDONLY};
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
-
-
-      char b[block_size];
-      int res = crypto_read(path, b, leftovers, block_off, &of);
+      int res = crypto_read(path, padding, leftovers, block_off, &of);
       if(res < 0) return res;
-      memcpy(mpad + crypto_secretbox_ZEROBYTES, b, res);
-      memcpy(mpad + crypto_secretbox_ZEROBYTES + res, buf + written, msize);
-
-      to_write += res;
-      msize    += res;
+      close(fd);
+      if(to_write + res < block_size - crypto_PADDING) to_write += res;
       fudge     = res;
     }
+
+    unsigned char mpad[to_write];
+    unsigned char cpad[to_write];
+    memset(mpad, 0, to_write);
+    memset(cpad, 0, to_write);
+    memcpy(mpad + crypto_secretbox_ZEROBYTES, padding, fudge);
+    memcpy(mpad + crypto_secretbox_ZEROBYTES + fudge, buf + written, msize);
 
     int ohno = crypto_secretbox(cpad, mpad, msize + crypto_secretbox_ZEROBYTES, nonce, key);
     if(ohno < 0) return -ENXIO;
