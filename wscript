@@ -9,7 +9,7 @@ def options(opt):
 def configure(cnf):
     cnf.load('compiler_c')
     cnf.check_cfg(package='fuse', args='--cflags --libs', uselib_store='FUSE')
-    cnf.env.append_unique('CFLAGS', ['-g', '-static', '-std=c99'])
+    cnf.env.append_unique('CFLAGS', ['-g', '-static', '-std=c99', '-Wall'])
     cnf.define('FUSE_USE_VERSION', 26)
 
 
