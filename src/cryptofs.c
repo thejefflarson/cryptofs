@@ -134,11 +134,12 @@ static int crypto_unlink(const char *path) {
 static int crypto_read(const char *path, char *buf, size_t size,
                        off_t off, struct fuse_file_info *inf){
   size_t red = 0;
+
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
     size_t delta = off % (block_size - crypto_PADDING);
     size_t bsize = 0, fudge = 0;
-
+    printf("reading: %zu\n", size);
     if(size < block_size - crypto_PADDING) {
       bsize = size + crypto_PADDING + delta;
       // We have to check that we aren't in partial block land, when reading from
@@ -148,8 +149,11 @@ static int crypto_read(const char *path, char *buf, size_t size,
       memset(&st, 0, sizeof(st));
       int staterr = crypto_getattr(path, &st);
       if(staterr < 0) return staterr;
-      if(st.st_size - off > size){
-        fudge  = st.st_size - off - size;
+      size_t next_block = (idx + 1) * (block_size - crypto_PADDING);
+      if(st.st_size < next_block)
+        next_block = st.st_size;
+      if(next_block - off > size){
+        fudge  = next_block - off - size;
         bsize += fudge;
       }
     } else {
@@ -158,7 +162,6 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
-
     if(res == -1)
       return -errno;
 
@@ -177,7 +180,10 @@ static int crypto_read(const char *path, char *buf, size_t size,
     memset(mpad, 0, csize);
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
-    if(ruroh == -1) return -ENXIO;
+    if(ruroh == -1) {
+      printf("error at index: %i offset: %llu read: %i size: %zu\n", idx, off, res, size);
+      return -ENXIO;
+    }
 
     memcpy(buf + red, mpad + delta + crypto_secretbox_ZEROBYTES, csize - delta - fudge - crypto_secretbox_ZEROBYTES);
 
@@ -213,15 +219,15 @@ static int crypto_write(const char *path, const char *buf, size_t size,
       // and append the new stuff to our buffer.
       size_t leftovers = off % (block_size - crypto_PADDING);
       off_t  block_off = idx * (block_size - crypto_PADDING);
-
       struct fuse_file_info of = {.flags = O_RDONLY};
       int fd = crypto_open(path, &of);
       if(fd == -1) return -errno;
       int res = crypto_read(path, padding, leftovers, block_off, &of);
       if(res < 0) return res;
       close(fd);
-      if(to_write + res < block_size - crypto_PADDING) to_write += res;
-      fudge     = res;
+      if(to_write + res < block_size - crypto_PADDING)
+        to_write += res;
+      fudge = res;
     }
 
     unsigned char mpad[to_write];
