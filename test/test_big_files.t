@@ -9,7 +9,7 @@ mkdir -p ./two
 echo "1..3"
 expect "echo 'pass' | ../build/cryptofs ./one ./two"
 cd ./two
-expect 'dd if=/dev/zero of=./file bs=1 count=65536'
+expect 'dd if=/dev/zero of=./file bs=1 count=12000000536'
 expect 'echo "1" >> ./file'
 cd ..
 

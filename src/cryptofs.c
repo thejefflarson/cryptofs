@@ -13,8 +13,8 @@
 
 static char *crypto_dir;
 static unsigned char key[crypto_secretbox_KEYBYTES];
-static int crypto_PADDING = crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
-static size_t block_size = 4096; // OSX Page Size
+static const int crypto_PADDING = crypto_secretbox_NONCEBYTES + crypto_secretbox_BOXZEROBYTES;
+static const size_t block_size = 4096; // OSX Page Size
 
 #define WITH_CRYPTO_PATH(line) \
   char *cpath = _crypto_path(path); \
@@ -138,27 +138,25 @@ static int crypto_read(const char *path, char *buf, size_t size,
   while(size > 0) {
     int idx = off / (block_size - crypto_PADDING);
     size_t delta = off % (block_size - crypto_PADDING);
-    size_t bsize = 0, fudge = 0;
-    printf("reading: %zu\n", size);
+    size_t bsize = block_size, fudge = 0;
+
     if(size < block_size - crypto_PADDING) {
-      bsize = size + crypto_PADDING + delta;
       // We have to check that we aren't in partial block land, when reading from
       // the end of the file by stating the file and checking that the requested
       // offset isn't a slice of a partial block.
-      struct stat st;
-      memset(&st, 0, sizeof(st));
+      struct stat st = {0};
       int staterr = crypto_getattr(path, &st);
       if(staterr < 0) return staterr;
       size_t next_block = (idx + 1) * (block_size - crypto_PADDING);
       if(st.st_size < next_block)
         next_block = st.st_size;
-      if(next_block - off > size){
-        fudge  = next_block - off - size;
-        bsize += fudge;
-      }
-    } else {
-      bsize = block_size;
+
+      if(next_block - off > size)
+        fudge = next_block - off - size;
     }
+
+    if(bsize > block_size)
+      printf("bzize: %zu size: %zu delta: %zu\n", bsize, size, delta);
 
     char block[bsize];
     int res = pread(inf->fh, block, bsize, block_size * idx);
@@ -181,7 +179,7 @@ static int crypto_read(const char *path, char *buf, size_t size,
 
     int ruroh = crypto_secretbox_open(mpad, cpad, csize, nonce, key);
     if(ruroh == -1) {
-      printf("error at index: %i offset: %llu read: %i size: %zu\n", idx, off, res, size);
+      printf("error at index: %i offset: %llu read: %i size: %zu path: %s\n", idx, off, res, bsize, path);
       return -ENXIO;
     }
 
